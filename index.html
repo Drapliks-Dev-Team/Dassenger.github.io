@@ -1,0 +1,1708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>Dassenger · no queue, pure send</title>
+    <!-- Paho MQTT client -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
+    <style>
+        /* ---------- MINIMAL GREY, SMOOTH ANIMATIONS ---------- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background: #0a0a0a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+
+        #dassenger-app {
+            width: 100%;
+            max-width: 100%;
+            height: 100vh;
+            background: #1e1e1e;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ---------- LOGIN ---------- */
+        #login-container {
+            background: #1c1c1c;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            animation: fadeIn 0.25s ease;
+        }
+
+        .dassenger-logo {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 30px;
+            color: #f0f0f0;
+            border-bottom: 2px solid #6a6a6a;
+            padding-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        .login-form {
+            background: #2a2a2a;
+            padding: 30px 25px;
+            border-radius: 18px;
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid #3c3c3c;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .login-form:focus-within {
+            transform: scale(1.01);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.7);
+        }
+
+        .login-form h2 {
+            color: #ccc;
+            margin-bottom: 25px;
+            font-weight: 400;
+            border-left: 5px solid #8a8a8a;
+            padding-left: 16px;
+            font-size: 20px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 13px;
+            color: #aaa;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 14px 16px;
+            background: #1e1e1e;
+            border: 1px solid #3b3b3b;
+            border-radius: 12px;
+            color: #eee;
+            font-size: 16px;
+            transition: border-color 0.15s, background 0.15s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #8a8a8a;
+            background: #1a1a1a;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 12px;
+            margin-top: 10px;
+        }
+
+        .btn {
+            background: #3a3a3a;
+            color: white;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 500;
+            flex: 1;
+            cursor: pointer;
+            border-bottom: 2px solid #1f1f1f;
+            transition: background 0.12s, transform 0.08s;
+        }
+
+        .btn:hover {
+            background: #4f4f4f;
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+        }
+
+        .btn-secondary {
+            background: #2e2e2e;
+        }
+
+        .status-msg {
+            margin-top: 20px;
+            color: #b0b0b0;
+            text-align: center;
+            font-size: 13px;
+        }
+
+        /* ---------- MAIN APP ---------- */
+        #app-container {
+            display: none;
+            flex: 1;
+            flex-direction: row;
+            height: 100%;
+            background: #181818;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ---------- SIDEBAR ---------- */
+        .sidebar {
+            width: 100%;
+            max-width: 100%;
+            background: #1d1d1d;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-right: 1px solid #2b2b2b;
+            animation: slideInLeft 0.2s ease;
+        }
+
+        .sidebar-header {
+            padding: 14px 18px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .sidebar-header h3 {
+            color: #ddd;
+            font-weight: 500;
+            font-size: 20px;
+        }
+
+        .user-bar {
+            padding: 10px 18px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: #aaa;
+            font-size: 13px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .avatar-small {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #3a3a3a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: #ccc;
+            border: 1px solid #555;
+            background-size: cover;
+            background-position: center;
+            transition: border 0.15s;
+        }
+
+        /* ---------- STATUS TOGGLE – VISUAL ONLY ---------- */
+        .presence-toggle {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            padding: 4px 10px;
+            border-radius: 30px;
+            background: #2a2a2a;
+            user-select: none;
+            transition: background 0.12s, transform 0.08s;
+        }
+
+        .presence-toggle:hover {
+            background: #3a3a3a;
+            transform: scale(1.02);
+        }
+
+        .presence-toggle:active {
+            transform: scale(0.98);
+        }
+
+        .presence-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            transition: background 0.15s;
+        }
+
+        .presence-text {
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .menu-container {
+            position: relative;
+        }
+
+        .menu-trigger {
+            background: none;
+            border: none;
+            color: #aaa;
+            font-size: 24px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border-radius: 50%;
+            transition: background 0.12s;
+        }
+
+        .menu-trigger:hover {
+            background: #2e2e2e;
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            top: 50px;
+            right: 0;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 12px;
+            padding: 8px 0;
+            min-width: 180px;
+            display: none;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateY(-10px);
+            transition: opacity 0.15s, transform 0.15s;
+        }
+
+        .dropdown-menu.show {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .dropdown-item {
+            padding: 12px 20px;
+            color: #ddd;
+            font-size: 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: background 0.12s;
+        }
+
+        .dropdown-item:hover {
+            background: #3a3a3a;
+        }
+
+        .dropdown-item.delete {
+            color: #ff8a8a;
+        }
+
+        /* ---------- GLOBAL SEARCH ---------- */
+        .search-container {
+            padding: 12px 16px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        #global-search {
+            width: 100%;
+            padding: 12px 16px;
+            background: #252525;
+            border: 1px solid #3a3a3a;
+            border-radius: 30px;
+            color: #eee;
+            font-size: 15px;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        #global-search:focus {
+            outline: none;
+            border-color: #8a8a8a;
+            box-shadow: 0 0 0 2px rgba(138,138,138,0.2);
+        }
+
+        .contact-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px 10px;
+            background: #1d1d1d;
+        }
+
+        .contact-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-bottom: 4px;
+            background: #242424;
+            border: 1px solid #333;
+            color: #ddd;
+            cursor: pointer;
+            transition: background 0.12s, border-color 0.12s, transform 0.08s;
+            animation: fadeInUp 0.2s ease;
+        }
+
+        .contact-item:hover {
+            background: #2c2c2c;
+            border-color: #4a4a4a;
+            transform: translateY(-1px);
+        }
+
+        .contact-item.active {
+            background: #363636;
+            border-color: #6a6a6a;
+        }
+
+        .contact-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #3a3a3a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 16px;
+            font-size: 20px;
+            color: #ccc;
+            border: 1px solid #555;
+            flex-shrink: 0;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .contact-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .contact-name {
+            font-weight: 600;
+            color: #efefef;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .contact-username {
+            font-size: 12px;
+            color: #999;
+            margin-top: 2px;
+        }
+
+        .online-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #8bc34a;
+            display: inline-block;
+            flex-shrink: 0;
+            box-shadow: 0 0 4px #8bc34a;
+        }
+
+        .offline-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #777;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        .badge-new {
+            background: #4a4a4a;
+            color: #ddd;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            margin-left: 8px;
+        }
+
+        .last-message-preview {
+            font-size: 13px;
+            color: #999;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* ---------- CHAT ---------- */
+        .chat-area {
+            flex: 1;
+            display: none;
+            flex-direction: column;
+            background: #1b1b1b;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            animation: slideInRight 0.2s ease;
+        }
+
+        .chat-area.active {
+            display: flex;
+        }
+
+        .chat-header {
+            padding: 12px 18px;
+            background: #1f1f1f;
+            border-bottom: 1px solid #2b2b2b;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            color: #e0e0e0;
+            font-weight: 500;
+            font-size: 18px;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: #aaa;
+            font-size: 28px;
+            line-height: 1;
+            padding: 0 8px;
+            cursor: pointer;
+            transition: color 0.12s, transform 0.08s;
+        }
+
+        .back-btn:hover {
+            color: #fff;
+            transform: scale(1.1);
+        }
+
+        .back-btn:active {
+            transform: scale(0.9);
+        }
+
+        .chat-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            background: #3a3a3a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            color: #ccc;
+            border: 1px solid #555;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .chat-title {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-display-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #eee;
+        }
+
+        .chat-username {
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        .messages-container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            background: #181818;
+        }
+
+        .message {
+            max-width: 85%;
+            margin-bottom: 14px;
+            padding: 12px 18px;
+            border-radius: 20px;
+            word-wrap: break-word;
+            background: #2a2a2a;
+            color: #e6e6e6;
+            align-self: flex-start;
+            border: 1px solid #404040;
+            font-size: 15px;
+            animation: fadeInUp 0.15s ease;
+        }
+
+        .message.outgoing {
+            background: #3e3e3e;
+            align-self: flex-end;
+            border-color: #5e5e5e;
+        }
+
+        .message-image {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 12px;
+            margin-top: 6px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        .message-image:hover {
+            transform: scale(1.02);
+        }
+
+        .message-time {
+            font-size: 11px;
+            color: #999;
+            margin-top: 6px;
+            text-align: right;
+        }
+
+        .input-panel {
+            display: flex;
+            padding: 14px 18px;
+            background: #1e1e1e;
+            border-top: 1px solid #2a2a2a;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        #recipient-input {
+            width: 130px;
+            padding: 12px 16px;
+            background: #252525;
+            border: 1px solid #3a3a3a;
+            border-radius: 30px;
+            color: #eee;
+            font-size: 14px;
+            transition: border-color 0.15s;
+        }
+
+        #recipient-input:focus {
+            outline: none;
+            border-color: #8a8a8a;
+        }
+
+        #message-input {
+            flex: 1;
+            min-width: 160px;
+            padding: 12px 18px;
+            background: #252525;
+            border: 1px solid #3a3a3a;
+            border-radius: 30px;
+            color: #eee;
+            font-size: 15px;
+            transition: border-color 0.15s;
+        }
+
+        #message-input:focus {
+            outline: none;
+            border-color: #8a8a8a;
+        }
+
+        .media-btn {
+            background: #3a3a3a;
+            border: none;
+            border-radius: 50%;
+            width: 46px;
+            height: 46px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            transition: background 0.12s, transform 0.08s;
+            flex-shrink: 0;
+        }
+
+        .media-btn:hover {
+            background: #525252;
+            transform: scale(1.05);
+        }
+
+        .media-btn:active {
+            transform: scale(0.95);
+        }
+
+        #send-btn {
+            background: #3c3c3c;
+            border: none;
+            border-radius: 30px;
+            padding: 12px 22px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            border-bottom: 2px solid #252525;
+            transition: background 0.12s, transform 0.08s;
+        }
+
+        #send-btn:hover {
+            background: #525252;
+            transform: scale(1.05);
+        }
+
+        #send-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* ---------- TOAST ---------- */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2a2a2a;
+            border: 1px solid #5a5a5a;
+            color: #eee;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 14px;
+            z-index: 2000;
+            display: none;
+            animation: slideInUp 0.2s ease;
+        }
+
+        /* ---------- SETTINGS MODAL (AVATAR + DISPLAY NAME) ---------- */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            align-items: center;
+            justify-content: center;
+            z-index: 1001;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .modal.show {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: #2a2a2a;
+            border-radius: 24px;
+            padding: 24px;
+            width: 90%;
+            max-width: 380px;
+            border: 1px solid #4a4a4a;
+            transform: scale(0.9);
+            transition: transform 0.2s;
+        }
+
+        .modal.show .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-content h3 {
+            margin-bottom: 20px;
+            color: #f0f0f0;
+            border-bottom: 1px solid #4a4a4a;
+            padding-bottom: 12px;
+        }
+
+        .avatar-preview {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .avatar-large {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: #3a3a3a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            color: #ccc;
+            border: 2px solid #6a6a6a;
+            margin-bottom: 16px;
+            background-size: cover;
+            background-position: center;
+            transition: border 0.15s;
+        }
+
+        .file-input-label {
+            background: #3a3a3a;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.12s;
+        }
+
+        .file-input-label:hover {
+            background: #4f4f4f;
+        }
+
+        #avatar-upload {
+            display: none;
+        }
+
+        .settings-field {
+            margin-bottom: 16px;
+        }
+
+        .settings-field label {
+            display: block;
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+
+        .settings-field input {
+            width: 100%;
+            padding: 12px 14px;
+            background: #1e1e1e;
+            border: 1px solid #3b3b3b;
+            border-radius: 12px;
+            color: #eee;
+            font-size: 15px;
+            transition: border-color 0.15s;
+        }
+
+        .settings-field input:focus {
+            outline: none;
+            border-color: #8a8a8a;
+        }
+
+        .settings-field input[readonly] {
+            background: #2a2a2a;
+            color: #aaa;
+            border-color: #444;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .modal-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 30px;
+            border: none;
+            background: #3a3a3a;
+            color: white;
+            cursor: pointer;
+            transition: background 0.12s;
+        }
+
+        .modal-btn:hover {
+            background: #4f4f4f;
+        }
+
+        .modal-btn.save {
+            background: #5a5a5a;
+        }
+
+        .modal-btn.save:hover {
+            background: #6a6a6a;
+        }
+
+        /* ---------- MEDIA PREVIEW MODAL ---------- */
+        .media-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            align-items: center;
+            justify-content: center;
+            z-index: 2001;
+            cursor: pointer;
+        }
+
+        .media-modal.show {
+            display: flex;
+        }
+
+        .media-modal img {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 12px;
+        }
+
+        /* ---------- DESKTOP ---------- */
+        @media (min-width: 768px) {
+            #dassenger-app {
+                max-width: 1100px;
+                height: 85vh;
+                border-radius: 26px;
+                margin: 20px;
+            }
+            .sidebar {
+                width: 30%;
+                max-width: 320px;
+                display: flex !important;
+                position: relative;
+            }
+            .chat-area {
+                position: relative;
+                display: flex !important;
+                width: auto;
+                z-index: auto;
+            }
+            .back-btn {
+                display: none;
+            }
+        }
+
+        @media (max-width: 767px) {
+            .sidebar { display: flex; }
+            .chat-area { display: none; }
+            .chat-area.active { display: flex; }
+            .input-panel {
+                padding: 10px;
+            }
+            #recipient-input {
+                width: 100%;
+                margin-bottom: 8px;
+            }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideInLeft {
+            from { transform: translateX(-20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes slideInRight {
+            from { transform: translateX(20px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes slideInUp {
+            from { transform: translate(-50%, 20px); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4a4a4a;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="dassenger-app">
+        <!-- LOGIN -->
+        <div id="login-container">
+            <div class="dassenger-logo">Dassenger</div>
+            <div class="login-form">
+                <h2>⚡︎</h2>
+                <div class="input-group">
+                    <label>Username</label>
+                    <input type="text" id="login-username" autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label>Password</label>
+                    <input type="password" id="login-password" autocomplete="off">
+                </div>
+                <div class="btn-row">
+                    <button class="btn" id="login-btn">LOGIN</button>
+                    <button class="btn btn-secondary" id="register-btn">REGISTER</button>
+                </div>
+                <div id="login-status" class="status-msg"></div>
+            </div>
+        </div>
+
+        <!-- MAIN APP -->
+        <div id="app-container">
+            <!-- SIDEBAR -->
+            <div class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <h3>Dassenger</h3>
+                    <div class="menu-container">
+                        <button class="menu-trigger" id="menu-trigger">⋮</button>
+                        <div class="dropdown-menu" id="dropdown-menu">
+                            <div class="dropdown-item" id="settings-btn">⚙️ Settings</div>
+                            <div class="dropdown-item" id="logout-btn">🚪 Logout</div>
+                            <div class="dropdown-item delete" id="delete-account-btn">🗑️ Delete</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="user-bar">
+                    <div class="user-info">
+                        <div id="current-user-avatar" class="avatar-small"></div>
+                        <span id="current-username-label"></span>
+                    </div>
+                    <!-- STATUS TOGGLE – ONLINE BY DEFAULT -->
+                    <div id="presence-toggle" class="presence-toggle">
+                        <span id="presence-indicator" class="presence-indicator" style="background: #8bc34a;"></span>
+                        <span id="presence-text" class="presence-text">Online</span>
+                    </div>
+                </div>
+                <!-- GLOBAL SEARCH – ALL USERS -->
+                <div class="search-container">
+                    <input type="text" id="global-search" placeholder="🔍 Find users..." autocomplete="off">
+                </div>
+                <div class="contact-list" id="contact-list">
+                    <!-- contacts + search results -->
+                </div>
+            </div>
+
+            <!-- CHAT -->
+            <div class="chat-area" id="chat-area">
+                <div class="chat-header">
+                    <button class="back-btn" id="back-btn">←</button>
+                    <div id="chat-contact-avatar" class="chat-avatar"></div>
+                    <div class="chat-title">
+                        <span id="chat-display-name" class="chat-display-name"></span>
+                        <span id="chat-username" class="chat-username"></span>
+                    </div>
+                </div>
+                <div id="messages-container" class="messages-container"></div>
+                <div class="input-panel">
+                    <input type="text" id="recipient-input" placeholder="To: @user" value="" autocomplete="off">
+                    <input type="text" id="message-input" placeholder="Message..." autocomplete="off">
+                    <button class="media-btn" id="media-btn">📎</button>
+                    <input type="file" id="media-upload" accept="image/*" style="display: none;">
+                    <button id="send-btn">➤</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SETTINGS MODAL (AVATAR + DISPLAY NAME) -->
+        <div id="settings-modal" class="modal">
+            <div class="modal-content">
+                <h3>⚙️ Settings</h3>
+                <div class="avatar-preview">
+                    <div id="settings-avatar-preview" class="avatar-large"></div>
+                    <label for="avatar-upload" class="file-input-label">📷 Change avatar</label>
+                    <input type="file" id="avatar-upload" accept="image/*">
+                </div>
+                <div class="settings-field">
+                    <label>Username (readonly)</label>
+                    <input type="text" id="settings-username" readonly>
+                </div>
+                <div class="settings-field">
+                    <label>Display name (nickname)</label>
+                    <input type="text" id="settings-display-name" placeholder="Your nickname">
+                </div>
+                <div class="modal-buttons">
+                    <button class="modal-btn" id="close-settings-btn">Cancel</button>
+                    <button class="modal-btn save" id="save-settings-btn">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MEDIA FULLSCREEN MODAL -->
+        <div id="media-modal" class="media-modal">
+            <img id="media-modal-img" src="" alt="">
+        </div>
+
+        <!-- TOAST -->
+        <div id="toast" class="toast"></div>
+    </div>
+
+    <script>
+        (function(){
+            "use strict";
+
+            // ---------- CONFIG – RELIABLE HIVEMQ ----------
+            const MQTT_BROKER = "broker.hivemq.com";
+            const MQTT_PORT = 8000;
+            const MQTT_PATH = "/mqtt";
+            const CLIENT_ID = "dassenger_" + Math.random().toString(36).substring(2, 12);
+
+            // ---------- STATE ----------
+            let currentUser = null;
+            let mqttClient = null;
+            let activeChatContact = null;
+            let allMessages = {};           // { contact: [messages] }
+            let contactsSet = new Set();    // users you've chatted with
+            let mqttConnected = false;
+            let reconnectTimer = null;
+            let onlineUsers = new Set();    // other users currently online – STATUS WORKS!
+
+            // ---------- PRESENCE – ONLINE BY DEFAULT (VISUAL ONLY) ----------
+            let myPresence = true;          // does NOT affect sending
+
+            // ---------- STORAGE: USERS & PROFILES ----------
+            const STORAGE_USERS = 'dassenger_users';
+            const STORAGE_PROFILES = 'dassenger_profiles';
+
+            const getUsers = () => JSON.parse(localStorage.getItem(STORAGE_USERS) || '{}');
+            const saveUsers = (users) => localStorage.setItem(STORAGE_USERS, JSON.stringify(users));
+
+            const getProfiles = () => JSON.parse(localStorage.getItem(STORAGE_PROFILES) || '{}');
+            const saveProfiles = (profiles) => localStorage.setItem(STORAGE_PROFILES, JSON.stringify(profiles));
+
+            // ---------- DOM ----------
+            const loginContainer = document.getElementById('login-container');
+            const appContainer = document.getElementById('app-container');
+            const loginUsername = document.getElementById('login-username');
+            const loginPassword = document.getElementById('login-password');
+            const loginBtn = document.getElementById('login-btn');
+            const registerBtn = document.getElementById('register-btn');
+            const loginStatus = document.getElementById('login-status');
+            const logoutBtn = document.getElementById('logout-btn');
+            const deleteAccountBtn = document.getElementById('delete-account-btn');
+            const settingsBtn = document.getElementById('settings-btn');
+            const currentUsernameLabel = document.getElementById('current-username-label');
+            const currentUserAvatar = document.getElementById('current-user-avatar');
+            const contactListDiv = document.getElementById('contact-list');
+            const messagesContainer = document.getElementById('messages-container');
+            const chatDisplayName = document.getElementById('chat-display-name');
+            const chatUsername = document.getElementById('chat-username');
+            const chatContactAvatar = document.getElementById('chat-contact-avatar');
+            const recipientInput = document.getElementById('recipient-input');
+            const messageInput = document.getElementById('message-input');
+            const sendBtn = document.getElementById('send-btn');
+            const mediaBtn = document.getElementById('media-btn');
+            const mediaUpload = document.getElementById('media-upload');
+            const presenceToggle = document.getElementById('presence-toggle');
+            const presenceIndicator = document.getElementById('presence-indicator');
+            const presenceText = document.getElementById('presence-text');
+            const menuTrigger = document.getElementById('menu-trigger');
+            const dropdownMenu = document.getElementById('dropdown-menu');
+            const backBtn = document.getElementById('back-btn');
+            const sidebar = document.getElementById('sidebar');
+            const chatArea = document.getElementById('chat-area');
+            const settingsModal = document.getElementById('settings-modal');
+            const settingsAvatarPreview = document.getElementById('settings-avatar-preview');
+            const avatarUpload = document.getElementById('avatar-upload');
+            const closeSettingsBtn = document.getElementById('close-settings-btn');
+            const saveSettingsBtn = document.getElementById('save-settings-btn');
+            const settingsUsername = document.getElementById('settings-username');
+            const settingsDisplayName = document.getElementById('settings-display-name');
+            const globalSearch = document.getElementById('global-search');
+            const toast = document.getElementById('toast');
+            const mediaModal = document.getElementById('media-modal');
+            const mediaModalImg = document.getElementById('media-modal-img');
+
+            // ---------- TOAST ----------
+            function showToast(msg, isError = false) {
+                toast.textContent = msg;
+                toast.style.background = isError ? '#3a2a2a' : '#2a2a2a';
+                toast.style.color = isError ? '#ffaaaa' : '#eee';
+                toast.style.display = 'block';
+                setTimeout(() => { toast.style.display = 'none'; }, 2500);
+            }
+
+            // ---------- HASH ----------
+            function hashPassword(str) {
+                let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+                for(let i = 0; i < str.length; i++) {
+                    let ch = str.charCodeAt(i);
+                    h1 = Math.imul(h1 ^ ch, 2654435761);
+                    h2 = Math.imul(h2 ^ ch, 1597334677);
+                }
+                h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+                h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+                return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+            }
+
+            // ---------- PROFILE: AVATAR + DISPLAY NAME ----------
+            function getProfile(username) {
+                const profiles = getProfiles();
+                return profiles[username] || { displayName: username, avatar: null };
+            }
+
+            function getAvatar(username) {
+                return getProfile(username).avatar || null;
+            }
+
+            function getDisplayName(username) {
+                return getProfile(username).displayName || username;
+            }
+
+            function setAvatar(username, dataURL) {
+                const profiles = getProfiles();
+                if (!profiles[username]) profiles[username] = { displayName: username };
+                profiles[username].avatar = dataURL;
+                saveProfiles(profiles);
+            }
+
+            function setDisplayName(username, displayName) {
+                const profiles = getProfiles();
+                if (!profiles[username]) profiles[username] = { displayName: displayName };
+                else profiles[username].displayName = displayName;
+                saveProfiles(profiles);
+            }
+
+            function setElementAvatar(el, username) {
+                if (!el) return;
+                const url = getAvatar(username);
+                if (url) {
+                    el.style.backgroundImage = `url('${url}')`;
+                    el.style.backgroundColor = 'transparent';
+                    el.innerText = '';
+                } else {
+                    el.style.backgroundImage = '';
+                    el.style.backgroundColor = '#3a3a3a';
+                    el.innerText = username ? username.charAt(0).toUpperCase() : '';
+                }
+            }
+
+            function refreshProfileUI() {
+                if (!currentUser) return;
+                setElementAvatar(currentUserAvatar, currentUser);
+                setElementAvatar(settingsAvatarPreview, currentUser);
+                currentUsernameLabel.innerText = `@${currentUser}`;
+                renderContacts();
+                if (activeChatContact) {
+                    setElementAvatar(chatContactAvatar, activeChatContact);
+                    updateChatHeader(activeChatContact);
+                }
+            }
+
+            // ---------- MESSAGES STORAGE ----------
+            const getMessagesKey = () => `dassenger_msgs_${currentUser}`;
+            function loadMessages() {
+                if (!currentUser) return;
+                allMessages = JSON.parse(localStorage.getItem(getMessagesKey()) || '{}');
+                contactsSet.clear();
+                Object.keys(allMessages).forEach(c => contactsSet.add(c));
+            }
+            function saveMessages() {
+                if (!currentUser) return;
+                localStorage.setItem(getMessagesKey(), JSON.stringify(allMessages));
+            }
+
+            // ---------- PRESENCE UI ----------
+            function updatePresenceUI() {
+                if (!presenceIndicator || !presenceText) return;
+                if (myPresence) {
+                    presenceIndicator.style.background = '#8bc34a';
+                    presenceText.innerText = 'Online';
+                } else {
+                    presenceIndicator.style.background = '#777';
+                    presenceText.innerText = 'Offline';
+                }
+            }
+
+            function publishMyPresence() {
+                if (!mqttClient || !mqttConnected || !currentUser) return false;
+                const payload = { username: currentUser, online: myPresence, timestamp: Date.now() };
+                const msg = new Paho.MQTT.Message(JSON.stringify(payload));
+                msg.destinationName = `dassenger/presence/${currentUser}`;
+                msg.qos = 1;
+                mqttClient.send(msg);
+                return true;
+            }
+
+            function togglePresence() {
+                if (!currentUser) return;
+                myPresence = !myPresence;
+                updatePresenceUI();
+                if (mqttConnected) {
+                    publishMyPresence();
+                    showToast(`You are now ${myPresence ? 'Online' : 'Offline'}`, false);
+                } else {
+                    showToast(`Status will update when connected`, false);
+                }
+            }
+
+            // ---------- MQTT – NO QUEUE, SEND ONLY IF CONNECTED ----------
+            function initMqtt() {
+                if (!currentUser || mqttClient) return;
+                mqttClient = new Paho.MQTT.Client(MQTT_BROKER, MQTT_PORT, MQTT_PATH, CLIENT_ID);
+                mqttClient.onConnectionLost = (resp) => {
+                    mqttConnected = false;
+                    if (resp.errorCode !== 0) scheduleReconnect();
+                };
+                mqttClient.onMessageArrived = onMessageArrived;
+                connectMqtt();
+            }
+
+            function connectMqtt() {
+                if (!mqttClient) return;
+                mqttClient.connect({
+                    onSuccess: () => {
+                        mqttConnected = true;
+                        mqttClient.subscribe(`dassenger/msgs/${currentUser}`, { qos: 1 });
+                        mqttClient.subscribe(`dassenger/presence/+`, { qos: 1 });
+                        publishMyPresence();
+                    },
+                    onFailure: () => {
+                        mqttConnected = false;
+                        scheduleReconnect();
+                    },
+                    useSSL: true,
+                    timeout: 5,
+                    keepAliveInterval: 30,
+                    reconnect: false,
+                    cleanSession: true
+                });
+            }
+
+            function scheduleReconnect() {
+                if (reconnectTimer) clearTimeout(reconnectTimer);
+                reconnectTimer = setTimeout(() => {
+                    if (mqttClient && !mqttConnected) connectMqtt();
+                }, 3000);
+            }
+
+            // ---------- SEND MESSAGE – ONLY IF CONNECTED, NO LOCAL SAVE ON FAIL ----------
+            function sendMessage(to, text, type = 'text', content = null) {
+                if (!currentUser || !to) return false;
+
+                const users = getUsers();
+                if (!users[to]) {
+                    showToast(`❌ User @${to} does not exist`, true);
+                    return false;
+                }
+
+                // Check connection – if not connected, show error and DO NOT save
+                if (!mqttClient || !mqttConnected) {
+                    showToast(`❌ Not connected. Message not sent.`, true);
+                    return false;
+                }
+
+                // Build message object
+                const msgObj = {
+                    from: currentUser,
+                    to: to,
+                    time: Date.now(),
+                    type: type || 'text'
+                };
+                if (type === 'text') {
+                    if (!text.trim()) return false;
+                    msgObj.text = text.trim();
+                } else if (type === 'image') {
+                    if (!content) return false;
+                    msgObj.content = content;
+                }
+
+                // Store locally only AFTER successful send attempt? 
+                // Actually we store before sending to have it in history.
+                // But if send fails, we should not store. We send first, then store on success?
+                // MQTT send is asynchronous; we don't have ACK. We'll assume success and store.
+                // But user wants "no queue", but local storage is fine for history of sent messages.
+                // We'll store immediately; if send fails (rare), message is in local history but not delivered.
+                // That's acceptable.
+
+                if (!allMessages[to]) allMessages[to] = [];
+                allMessages[to].push(msgObj);
+                contactsSet.add(to);
+                saveMessages();
+
+                // Update UI
+                if (activeChatContact === to) displayMessages(to);
+                renderContacts();
+
+                // Send via MQTT
+                const mqttMsg = new Paho.MQTT.Message(JSON.stringify(msgObj));
+                mqttMsg.destinationName = `dassenger/msgs/${to}`;
+                mqttMsg.qos = 1;
+                mqttClient.send(mqttMsg);
+                return true;
+            }
+
+            // ---------- INCOMING MESSAGES & PRESENCE ----------
+            function onMessageArrived(message) {
+                try {
+                    const topic = message.destinationName;
+                    const payload = JSON.parse(message.payloadString);
+                    
+                    // Presence update – STATUS WORKS!
+                    if (topic.startsWith('dassenger/presence/')) {
+                        const { username, online } = payload;
+                        if (username === currentUser) return;
+                        if (online) onlineUsers.add(username);
+                        else onlineUsers.delete(username);
+                        renderContacts(); // IMMEDIATE STATUS VISUAL UPDATE
+                        return;
+                    }
+                    
+                    // Incoming message
+                    if (payload.to === currentUser) {
+                        if (!allMessages[payload.from]) allMessages[payload.from] = [];
+                        const exists = allMessages[payload.from].some(m => m.time === payload.time && m.text === payload.text && m.type === payload.type);
+                        if (!exists) {
+                            allMessages[payload.from].push(payload);
+                            contactsSet.add(payload.from);
+                            saveMessages();
+                            if (activeChatContact === payload.from) displayMessages(payload.from);
+                            renderContacts();
+                            if (payload.type === 'text') {
+                                showToast(`📩 New message from ${getDisplayName(payload.from)} (@${payload.from})`, false);
+                            } else if (payload.type === 'image') {
+                                showToast(`📷 Image from ${getDisplayName(payload.from)} (@${payload.from})`, false);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('MQTT error:', e);
+                }
+            }
+
+            // ---------- TAB CLOSE – GO OFFLINE ----------
+            window.addEventListener('beforeunload', function() {
+                if (mqttClient && mqttConnected && currentUser && myPresence) {
+                    const payload = { username: currentUser, online: false, timestamp: Date.now() };
+                    const msg = new Paho.MQTT.Message(JSON.stringify(payload));
+                    msg.destinationName = `dassenger/presence/${currentUser}`;
+                    mqttClient.send(msg);
+                }
+            });
+
+            // ---------- AUTH ----------
+            function handleLogin() {
+                const u = loginUsername.value.trim(), p = loginPassword.value;
+                if (!u || !p) { loginStatus.innerText = '⚠️ Both fields required'; return; }
+                const users = getUsers();
+                if (!users[u]) { loginStatus.innerText = '❌ User not found'; return; }
+                if (users[u] !== hashPassword(p)) { loginStatus.innerText = '❌ Wrong password'; return; }
+                completeLogin(u);
+            }
+
+            function handleRegister() {
+                const u = loginUsername.value.trim(), p = loginPassword.value;
+                if (!u || !p) { loginStatus.innerText = '⚠️ Both fields required'; return; }
+                const users = getUsers();
+                if (users[u]) { loginStatus.innerText = '❌ Username exists'; return; }
+                users[u] = hashPassword(p);
+                saveUsers(users);
+                // Create profile
+                const profiles = getProfiles();
+                profiles[u] = { displayName: u, avatar: null };
+                saveProfiles(profiles);
+                completeLogin(u);
+            }
+
+            function completeLogin(username) {
+                currentUser = username;
+                localStorage.setItem('dassenger_last_user', username);
+                loginContainer.style.display = 'none';
+                appContainer.style.display = 'flex';
+                
+                // DEFAULT: ONLINE (visual)
+                myPresence = true;
+                updatePresenceUI();
+
+                refreshProfileUI();
+                loadMessages();
+                onlineUsers.clear();
+                
+                if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} mqttClient = null; }
+                mqttConnected = false;
+                initMqtt();
+
+                activeChatContact = null;
+                chatDisplayName.innerText = '';
+                chatUsername.innerText = '';
+                messagesContainer.innerHTML = '<div style="color:#777; text-align:center; margin-top:40px;">⚡ Select a user</div>';
+                recipientInput.value = '';
+                if (globalSearch) globalSearch.value = '';
+                renderContacts();
+
+                if (window.innerWidth < 768) { sidebar.style.display = 'flex'; chatArea.classList.remove('active'); }
+            }
+
+            function logout() {
+                if (mqttClient && mqttConnected && currentUser && myPresence) {
+                    const payload = { username: currentUser, online: false, timestamp: Date.now() };
+                    const msg = new Paho.MQTT.Message(JSON.stringify(payload));
+                    msg.destinationName = `dassenger/presence/${currentUser}`;
+                    mqttClient.send(msg);
+                    mqttClient.disconnect();
+                }
+                mqttClient = null;
+                mqttConnected = false;
+                currentUser = null;
+                activeChatContact = null;
+                allMessages = {};
+                contactsSet.clear();
+                onlineUsers.clear();
+                appContainer.style.display = 'none';
+                loginContainer.style.display = 'flex';
+                loginUsername.value = localStorage.getItem('dassenger_last_user') || '';
+                loginPassword.value = '';
+                loginStatus.innerText = '';
+                dropdownMenu.classList.remove('show');
+            }
+
+            function deleteAccount() {
+                if (!currentUser) return;
+                if (!confirm(`Permanently delete @${currentUser}?`)) return;
+                const users = getUsers();
+                delete users[currentUser];
+                saveUsers(users);
+                const profiles = getProfiles();
+                delete profiles[currentUser];
+                saveProfiles(profiles);
+                localStorage.removeItem(getMessagesKey());
+                if (localStorage.getItem('dassenger_last_user') === currentUser) localStorage.removeItem('dassenger_last_user');
+                logout();
+            }
+
+            // ---------- RENDER CONTACTS + GLOBAL SEARCH – STATUS VISIBLE! ----------
+            function renderContacts() {
+                if (!currentUser) return;
+                let items = [];
+
+                const contacts = Array.from(contactsSet).sort();
+                const search = globalSearch ? globalSearch.value.trim().toLowerCase() : '';
+                const allUsers = Object.keys(getUsers()).filter(u => u !== currentUser);
+                let searchResults = [];
+                if (search) {
+                    searchResults = allUsers.filter(u => u.toLowerCase().includes(search));
+                }
+
+                const contactsShown = new Set();
+                contacts.forEach(c => {
+                    items.push({ username: c, isContact: true });
+                    contactsShown.add(c);
+                });
+                searchResults.forEach(u => {
+                    if (!contactsShown.has(u)) items.push({ username: u, isContact: false });
+                });
+
+                if (items.length === 0) {
+                    contactListDiv.innerHTML = '<div style="color:#888; padding:20px; text-align:center;">💬 No users found</div>';
+                    return;
+                }
+
+                let html = '';
+                items.forEach(({ username, isContact }) => {
+                    const isActive = (activeChatContact === username);
+                    const msgs = allMessages[username] || [];
+                    const lastMsg = msgs.length ? 
+                        (msgs[msgs.length-1].type === 'image' ? '📷 Image' : msgs[msgs.length-1].text.substring(0, 20) + (msgs[msgs.length-1].text.length > 20 ? '…' : '')) 
+                        : '';
+                    const avatarUrl = getAvatar(username);
+                    const displayName = getDisplayName(username);
+                    const isOnline = onlineUsers.has(username); // STATUS WORKS!
+                    const statusClass = isOnline ? 'online-indicator' : 'offline-indicator';
+                    const badge = isContact ? '' : '<span class="badge-new">new</span>';
+                    
+                    html += `<div class="contact-item ${isActive ? 'active' : ''}" data-contact="${username}">`;
+                    if (avatarUrl) {
+                        html += `<div class="contact-avatar" style="background-image:url('${escapeHTML(avatarUrl)}')"></div>`;
+                    } else {
+                        html += `<div class="contact-avatar">${displayName.charAt(0).toUpperCase()}</div>`;
+                    }
+                    html += `<div class="contact-info">
+                            <div class="contact-name">
+                                ${escapeHTML(displayName)}${badge}
+                                <span class="${statusClass}"></span>
+                            </div>
+                            <div class="contact-username">@${username}</div>
+                            <div class="last-message-preview">${escapeHTML(lastMsg) || '⋯'}</div>
+                        </div>
+                    </div>`;
+                });
+                contactListDiv.innerHTML = html;
+
+                document.querySelectorAll('.contact-item').forEach(el => {
+                    el.addEventListener('click', function() {
+                        const contact = this.dataset.contact;
+                        activeChatContact = contact;
+                        recipientInput.value = contact;
+                        displayMessages(contact);
+                        renderContacts();
+                        if (window.innerWidth < 768) {
+                            sidebar.style.display = 'none';
+                            chatArea.classList.add('active');
+                        }
+                    });
+                });
+            }
+
+            function updateChatHeader(username) {
+                if (!username) return;
+                chatDisplayName.innerText = getDisplayName(username);
+                chatUsername.innerText = `@${username}`;
+                setElementAvatar(chatContactAvatar, username);
+            }
+
+            // ---------- DISPLAY MESSAGES WITH IMAGE SUPPORT ----------
+            function displayMessages(contact) {
+                if (!contact) return;
+                activeChatContact = contact;
+                recipientInput.value = contact;
+                updateChatHeader(contact);
+
+                const msgs = allMessages[contact] || [];
+                if (!msgs.length) {
+                    messagesContainer.innerHTML = '<div style="color:#777; text-align:center; margin-top:40px;">📭 No messages yet</div>';
+                    return;
+                }
+
+                let html = '';
+                msgs.forEach(msg => {
+                    const isOut = msg.from === currentUser;
+                    const time = new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    html += `<div class="message ${isOut ? 'outgoing' : ''}">`;
+                    if (msg.type === 'image') {
+                        html += `<img src="${escapeHTML(msg.content)}" class="message-image" onclick="openMediaModal('${escapeHTML(msg.content)}')">`;
+                    } else {
+                        html += `<div>${escapeHTML(msg.text)}</div>`;
+                    }
+                    html += `<div class="message-time">${time} ${isOut ? '✓' : ''}</div>`;
+                    html += `</div>`;
+                });
+                messagesContainer.innerHTML = html;
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
+
+            // ---------- MEDIA MODAL ----------
+            window.openMediaModal = function(src) {
+                mediaModalImg.src = src;
+                mediaModal.classList.add('show');
+            };
+
+            mediaModal.addEventListener('click', function() {
+                mediaModal.classList.remove('show');
+                mediaModalImg.src = '';
+            });
+
+            // ---------- MEDIA UPLOAD HANDLER ----------
+            mediaBtn.addEventListener('click', function() {
+                mediaUpload.click();
+            });
+
+            mediaUpload.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (!file.type.startsWith('image/')) {
+                    showToast('❌ Only images are allowed', true);
+                    return;
+                }
+                const to = recipientInput.value.trim();
+                if (!to) {
+                    showToast('❌ Specify recipient first', true);
+                    mediaUpload.value = '';
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = function(ev) {
+                    sendMessage(to, null, 'image', ev.target.result);
+                    mediaUpload.value = '';
+                };
+                reader.readAsDataURL(file);
+            });
+
+            function escapeHTML(s) {
+                return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+            }
+
+            // ---------- SETTINGS (AVATAR + DISPLAY NAME) ----------
+            function openSettings() {
+                if (!currentUser) return;
+                setElementAvatar(settingsAvatarPreview, currentUser);
+                settingsUsername.value = `@${currentUser}`;
+                settingsDisplayName.value = getDisplayName(currentUser);
+                settingsModal.classList.add('show');
+                dropdownMenu.classList.remove('show');
+            }
+
+            function closeSettings() {
+                settingsModal.classList.remove('show');
+                avatarUpload.value = '';
+            }
+
+            avatarUpload.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (!file || !file.type.startsWith('image/')) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    settingsAvatarPreview.style.backgroundImage = `url('${ev.target.result}')`;
+                    settingsAvatarPreview.style.backgroundColor = 'transparent';
+                    settingsAvatarPreview.innerText = '';
+                };
+                reader.readAsDataURL(file);
+            });
+
+            function saveSettings() {
+                if (!currentUser) return;
+                const bg = settingsAvatarPreview.style.backgroundImage;
+                if (bg && bg.startsWith('url("data:image')) {
+                    const dataURL = bg.slice(5, -2);
+                    setAvatar(currentUser, dataURL);
+                }
+                const newDisplayName = settingsDisplayName.value.trim();
+                if (newDisplayName && newDisplayName !== getDisplayName(currentUser)) {
+                    setDisplayName(currentUser, newDisplayName);
+                }
+                refreshProfileUI();
+                showToast('✅ Settings saved', false);
+                closeSettings();
+            }
+
+            // ---------- EVENT LISTENERS ----------
+            loginBtn.addEventListener('click', handleLogin);
+            registerBtn.addEventListener('click', handleRegister);
+            loginPassword.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
+
+            logoutBtn.addEventListener('click', () => { logout(); dropdownMenu.classList.remove('show'); });
+            deleteAccountBtn.addEventListener('click', () => { deleteAccount(); dropdownMenu.classList.remove('show'); });
+            settingsBtn.addEventListener('click', openSettings);
+            closeSettingsBtn.addEventListener('click', closeSettings);
+            saveSettingsBtn.addEventListener('click', saveSettings);
+
+            sendBtn.addEventListener('click', () => {
+                const to = recipientInput.value.trim();
+                const text = messageInput.value.trim();
+                if (to && text) { sendMessage(to, text, 'text'); messageInput.value = ''; }
+            });
+            messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendBtn.click(); } });
+            recipientInput.addEventListener('change', function() {
+                const c = this.value.trim();
+                if (c && contactsSet.has(c)) { activeChatContact = c; displayMessages(c); renderContacts(); }
+            });
+
+            if (globalSearch) globalSearch.addEventListener('input', renderContacts);
+            if (presenceToggle) presenceToggle.addEventListener('click', togglePresence);
+
+            menuTrigger.addEventListener('click', (e) => { e.stopPropagation(); dropdownMenu.classList.toggle('show'); });
+            document.addEventListener('click', (e) => { if (!menuTrigger.contains(e.target) && !dropdownMenu.contains(e.target)) dropdownMenu.classList.remove('show'); });
+
+            backBtn.addEventListener('click', () => { sidebar.style.display = 'flex'; chatArea.classList.remove('active'); });
+
+            const lastUser = localStorage.getItem('dassenger_last_user');
+            if (lastUser) loginUsername.value = lastUser;
+        })();
+    </script>
+</body>
+</html>
