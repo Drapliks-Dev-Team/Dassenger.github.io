@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Dassenger · no queue, pure send</title>
+    <title>Dassenger · forced connection</title>
     <!-- Paho MQTT client -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
     <style>
@@ -199,6 +199,7 @@
             justify-content: space-between;
             color: #aaa;
             font-size: 13px;
+            flex-wrap: wrap;
         }
 
         .user-info {
@@ -221,6 +222,40 @@
             background-size: cover;
             background-position: center;
             transition: border 0.15s;
+        }
+
+        /* ---------- MQTT CONNECTION STATUS – VISIBLE ---------- */
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #2a2a2a;
+            padding: 4px 10px;
+            border-radius: 30px;
+            font-size: 12px;
+        }
+
+        .mqtt-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .reconnect-btn {
+            background: none;
+            border: 1px solid #555;
+            color: #ddd;
+            border-radius: 30px;
+            padding: 2px 10px;
+            font-size: 11px;
+            cursor: pointer;
+            margin-left: 6px;
+            transition: background 0.12s;
+        }
+
+        .reconnect-btn:hover {
+            background: #3a3a3a;
         }
 
         /* ---------- STATUS TOGGLE – VISUAL ONLY ---------- */
@@ -974,10 +1009,18 @@
                         <div id="current-user-avatar" class="avatar-small"></div>
                         <span id="current-username-label"></span>
                     </div>
-                    <!-- STATUS TOGGLE – ONLINE BY DEFAULT -->
-                    <div id="presence-toggle" class="presence-toggle">
-                        <span id="presence-indicator" class="presence-indicator" style="background: #8bc34a;"></span>
-                        <span id="presence-text" class="presence-text">Online</span>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <!-- STATUS TOGGLE -->
+                        <div id="presence-toggle" class="presence-toggle">
+                            <span id="presence-indicator" class="presence-indicator" style="background: #8bc34a;"></span>
+                            <span id="presence-text" class="presence-text">Online</span>
+                        </div>
+                        <!-- MQTT CONNECTION STATUS + RECONNECT BUTTON -->
+                        <div class="connection-status" id="mqtt-status-container">
+                            <span id="mqtt-indicator" class="mqtt-indicator" style="background: #777;"></span>
+                            <span id="mqtt-label">MQTT</span>
+                            <button id="reconnect-mqtt-btn" class="reconnect-btn">↻</button>
+                        </div>
                     </div>
                 </div>
                 <!-- GLOBAL SEARCH – ALL USERS -->
@@ -1047,7 +1090,7 @@
         (function(){
             "use strict";
 
-            // ---------- CONFIG – RELIABLE HIVEMQ ----------
+            // ---------- CONFIG – RELIABLE HIVEMQ (PUBLIC) ----------
             const MQTT_BROKER = "broker.hivemq.com";
             const MQTT_PORT = 8000;
             const MQTT_PATH = "/mqtt";
@@ -1061,7 +1104,7 @@
             let contactsSet = new Set();    // users you've chatted with
             let mqttConnected = false;
             let reconnectTimer = null;
-            let onlineUsers = new Set();    // other users currently online – STATUS WORKS!
+            let onlineUsers = new Set();    // other users currently online
 
             // ---------- PRESENCE – ONLINE BY DEFAULT (VISUAL ONLY) ----------
             let myPresence = true;          // does NOT affect sending
@@ -1118,6 +1161,9 @@
             const toast = document.getElementById('toast');
             const mediaModal = document.getElementById('media-modal');
             const mediaModalImg = document.getElementById('media-modal-img');
+            const mqttIndicator = document.getElementById('mqtt-indicator');
+            const mqttLabel = document.getElementById('mqtt-label');
+            const reconnectBtn = document.getElementById('reconnect-mqtt-btn');
 
             // ---------- TOAST ----------
             function showToast(msg, isError = false) {
@@ -1126,6 +1172,18 @@
                 toast.style.color = isError ? '#ffaaaa' : '#eee';
                 toast.style.display = 'block';
                 setTimeout(() => { toast.style.display = 'none'; }, 2500);
+            }
+
+            // ---------- UPDATE MQTT STATUS UI ----------
+            function updateMqttUI() {
+                if (!mqttIndicator || !mqttLabel) return;
+                if (mqttConnected) {
+                    mqttIndicator.style.background = '#8bc34a';
+                    mqttLabel.innerText = 'MQTT ●';
+                } else {
+                    mqttIndicator.style.background = '#777';
+                    mqttLabel.innerText = 'MQTT ○';
+                }
             }
 
             // ---------- HASH ----------
@@ -1238,17 +1296,24 @@
                     publishMyPresence();
                     showToast(`You are now ${myPresence ? 'Online' : 'Offline'}`, false);
                 } else {
-                    showToast(`Status will update when connected`, false);
+                    showToast(`Status will update when MQTT connected`, false);
                 }
             }
 
-            // ---------- MQTT – NO QUEUE, SEND ONLY IF CONNECTED ----------
+            // ---------- MQTT – AGGRESSIVE RECONNECT, VISIBLE STATUS ----------
             function initMqtt() {
-                if (!currentUser || mqttClient) return;
+                if (!currentUser) return;
+                if (mqttClient) {
+                    try { mqttClient.disconnect(); } catch(e) {}
+                    mqttClient = null;
+                }
                 mqttClient = new Paho.MQTT.Client(MQTT_BROKER, MQTT_PORT, MQTT_PATH, CLIENT_ID);
                 mqttClient.onConnectionLost = (resp) => {
                     mqttConnected = false;
-                    if (resp.errorCode !== 0) scheduleReconnect();
+                    updateMqttUI();
+                    if (resp.errorCode !== 0) {
+                        scheduleReconnect();
+                    }
                 };
                 mqttClient.onMessageArrived = onMessageArrived;
                 connectMqtt();
@@ -1259,12 +1324,14 @@
                 mqttClient.connect({
                     onSuccess: () => {
                         mqttConnected = true;
+                        updateMqttUI();
                         mqttClient.subscribe(`dassenger/msgs/${currentUser}`, { qos: 1 });
                         mqttClient.subscribe(`dassenger/presence/+`, { qos: 1 });
                         publishMyPresence();
                     },
-                    onFailure: () => {
+                    onFailure: (err) => {
                         mqttConnected = false;
+                        updateMqttUI();
                         scheduleReconnect();
                     },
                     useSSL: true,
@@ -1278,8 +1345,21 @@
             function scheduleReconnect() {
                 if (reconnectTimer) clearTimeout(reconnectTimer);
                 reconnectTimer = setTimeout(() => {
-                    if (mqttClient && !mqttConnected) connectMqtt();
+                    if (mqttClient && !mqttConnected) {
+                        connectMqtt();
+                    }
                 }, 3000);
+            }
+
+            // Manual reconnect
+            function manualReconnect() {
+                if (!currentUser) return;
+                showToast('🔄 Reconnecting...', false);
+                if (mqttClient) {
+                    try { mqttClient.disconnect(); } catch(e) {}
+                    mqttClient = null;
+                }
+                initMqtt();
             }
 
             // ---------- SEND MESSAGE – ONLY IF CONNECTED, NO LOCAL SAVE ON FAIL ----------
@@ -1294,7 +1374,7 @@
 
                 // Check connection – if not connected, show error and DO NOT save
                 if (!mqttClient || !mqttConnected) {
-                    showToast(`❌ Not connected. Message not sent.`, true);
+                    showToast(`❌ MQTT not connected. Message not sent.`, true);
                     return false;
                 }
 
@@ -1313,14 +1393,7 @@
                     msgObj.content = content;
                 }
 
-                // Store locally only AFTER successful send attempt? 
-                // Actually we store before sending to have it in history.
-                // But if send fails, we should not store. We send first, then store on success?
-                // MQTT send is asynchronous; we don't have ACK. We'll assume success and store.
-                // But user wants "no queue", but local storage is fine for history of sent messages.
-                // We'll store immediately; if send fails (rare), message is in local history but not delivered.
-                // That's acceptable.
-
+                // Store locally (only if connected, but we store before send)
                 if (!allMessages[to]) allMessages[to] = [];
                 allMessages[to].push(msgObj);
                 contactsSet.add(to);
@@ -1331,10 +1404,15 @@
                 renderContacts();
 
                 // Send via MQTT
-                const mqttMsg = new Paho.MQTT.Message(JSON.stringify(msgObj));
-                mqttMsg.destinationName = `dassenger/msgs/${to}`;
-                mqttMsg.qos = 1;
-                mqttClient.send(mqttMsg);
+                try {
+                    const mqttMsg = new Paho.MQTT.Message(JSON.stringify(msgObj));
+                    mqttMsg.destinationName = `dassenger/msgs/${to}`;
+                    mqttMsg.qos = 1;
+                    mqttClient.send(mqttMsg);
+                } catch (e) {
+                    showToast(`❌ Send failed`, true);
+                    return false;
+                }
                 return true;
             }
 
@@ -1344,13 +1422,13 @@
                     const topic = message.destinationName;
                     const payload = JSON.parse(message.payloadString);
                     
-                    // Presence update – STATUS WORKS!
+                    // Presence update
                     if (topic.startsWith('dassenger/presence/')) {
                         const { username, online } = payload;
                         if (username === currentUser) return;
                         if (online) onlineUsers.add(username);
                         else onlineUsers.delete(username);
-                        renderContacts(); // IMMEDIATE STATUS VISUAL UPDATE
+                        renderContacts();
                         return;
                     }
                     
@@ -1424,8 +1502,9 @@
                 loadMessages();
                 onlineUsers.clear();
                 
-                if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} mqttClient = null; }
+                // Force MQTT init
                 mqttConnected = false;
+                updateMqttUI();
                 initMqtt();
 
                 activeChatContact = null;
@@ -1449,6 +1528,7 @@
                 }
                 mqttClient = null;
                 mqttConnected = false;
+                updateMqttUI();
                 currentUser = null;
                 activeChatContact = null;
                 allMessages = {};
@@ -1556,7 +1636,6 @@
                 setElementAvatar(chatContactAvatar, username);
             }
 
-            // ---------- DISPLAY MESSAGES WITH IMAGE SUPPORT ----------
             function displayMessages(contact) {
                 if (!contact) return;
                 activeChatContact = contact;
@@ -1694,6 +1773,7 @@
 
             if (globalSearch) globalSearch.addEventListener('input', renderContacts);
             if (presenceToggle) presenceToggle.addEventListener('click', togglePresence);
+            if (reconnectBtn) reconnectBtn.addEventListener('click', manualReconnect);
 
             menuTrigger.addEventListener('click', (e) => { e.stopPropagation(); dropdownMenu.classList.toggle('show'); });
             document.addEventListener('click', (e) => { if (!menuTrigger.contains(e.target) && !dropdownMenu.contains(e.target)) dropdownMenu.classList.remove('show'); });
