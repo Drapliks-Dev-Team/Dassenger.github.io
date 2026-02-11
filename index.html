@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Dassenger · forced connection</title>
+    <title>Dassenger · WSS forced connection</title>
     <!-- Paho MQTT client -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/paho-mqtt.min.js"></script>
     <style>
@@ -1090,10 +1090,11 @@
         (function(){
             "use strict";
 
-            // ---------- CONFIG – RELIABLE HIVEMQ (PUBLIC) ----------
+            // ---------- КОНФИГУРАЦИЯ ДЛЯ GITHUB PAGES – WSS, ПОРТ 8884 ----------
             const MQTT_BROKER = "broker.hivemq.com";
-            const MQTT_PORT = 8000;
+            const MQTT_PORT = 8884;        // WSS порт
             const MQTT_PATH = "/mqtt";
+            const MQTT_USE_WSS = true;      // явно используем WSS
             const CLIENT_ID = "dassenger_" + Math.random().toString(36).substring(2, 12);
 
             // ---------- STATE ----------
@@ -1300,14 +1301,16 @@
                 }
             }
 
-            // ---------- MQTT – AGGRESSIVE RECONNECT, VISIBLE STATUS ----------
+            // ---------- MQTT – WSS, АГРЕССИВНОЕ ПЕРЕПОДКЛЮЧЕНИЕ ----------
             function initMqtt() {
                 if (!currentUser) return;
                 if (mqttClient) {
                     try { mqttClient.disconnect(); } catch(e) {}
                     mqttClient = null;
                 }
+                // Используем WSS через порт 8884
                 mqttClient = new Paho.MQTT.Client(MQTT_BROKER, MQTT_PORT, MQTT_PATH, CLIENT_ID);
+                
                 mqttClient.onConnectionLost = (resp) => {
                     mqttConnected = false;
                     updateMqttUI();
@@ -1328,14 +1331,16 @@
                         mqttClient.subscribe(`dassenger/msgs/${currentUser}`, { qos: 1 });
                         mqttClient.subscribe(`dassenger/presence/+`, { qos: 1 });
                         publishMyPresence();
+                        showToast('✅ MQTT connected', false);
                     },
                     onFailure: (err) => {
                         mqttConnected = false;
                         updateMqttUI();
+                        showToast('❌ MQTT connection failed', true);
                         scheduleReconnect();
                     },
-                    useSSL: true,
-                    timeout: 5,
+                    useSSL: true,           // WSS requires useSSL = true
+                    timeout: 10,
                     keepAliveInterval: 30,
                     reconnect: false,
                     cleanSession: true
@@ -1346,6 +1351,7 @@
                 if (reconnectTimer) clearTimeout(reconnectTimer);
                 reconnectTimer = setTimeout(() => {
                     if (mqttClient && !mqttConnected) {
+                        showToast('🔄 Reconnecting MQTT...', false);
                         connectMqtt();
                     }
                 }, 3000);
@@ -1354,7 +1360,7 @@
             // Manual reconnect
             function manualReconnect() {
                 if (!currentUser) return;
-                showToast('🔄 Reconnecting...', false);
+                showToast('🔄 Manual reconnect...', false);
                 if (mqttClient) {
                     try { mqttClient.disconnect(); } catch(e) {}
                     mqttClient = null;
@@ -1362,7 +1368,7 @@
                 initMqtt();
             }
 
-            // ---------- SEND MESSAGE – ONLY IF CONNECTED, NO LOCAL SAVE ON FAIL ----------
+            // ---------- SEND MESSAGE – ONLY IF CONNECTED ----------
             function sendMessage(to, text, type = 'text', content = null) {
                 if (!currentUser || !to) return false;
 
@@ -1372,13 +1378,11 @@
                     return false;
                 }
 
-                // Check connection – if not connected, show error and DO NOT save
                 if (!mqttClient || !mqttConnected) {
                     showToast(`❌ MQTT not connected. Message not sent.`, true);
                     return false;
                 }
 
-                // Build message object
                 const msgObj = {
                     from: currentUser,
                     to: to,
@@ -1393,17 +1397,14 @@
                     msgObj.content = content;
                 }
 
-                // Store locally (only if connected, but we store before send)
                 if (!allMessages[to]) allMessages[to] = [];
                 allMessages[to].push(msgObj);
                 contactsSet.add(to);
                 saveMessages();
 
-                // Update UI
                 if (activeChatContact === to) displayMessages(to);
                 renderContacts();
 
-                // Send via MQTT
                 try {
                     const mqttMsg = new Paho.MQTT.Message(JSON.stringify(msgObj));
                     mqttMsg.destinationName = `dassenger/msgs/${to}`;
@@ -1422,7 +1423,6 @@
                     const topic = message.destinationName;
                     const payload = JSON.parse(message.payloadString);
                     
-                    // Presence update
                     if (topic.startsWith('dassenger/presence/')) {
                         const { username, online } = payload;
                         if (username === currentUser) return;
@@ -1432,7 +1432,6 @@
                         return;
                     }
                     
-                    // Incoming message
                     if (payload.to === currentUser) {
                         if (!allMessages[payload.from]) allMessages[payload.from] = [];
                         const exists = allMessages[payload.from].some(m => m.time === payload.time && m.text === payload.text && m.type === payload.type);
@@ -1481,7 +1480,6 @@
                 if (users[u]) { loginStatus.innerText = '❌ Username exists'; return; }
                 users[u] = hashPassword(p);
                 saveUsers(users);
-                // Create profile
                 const profiles = getProfiles();
                 profiles[u] = { displayName: u, avatar: null };
                 saveProfiles(profiles);
@@ -1494,7 +1492,6 @@
                 loginContainer.style.display = 'none';
                 appContainer.style.display = 'flex';
                 
-                // DEFAULT: ONLINE (visual)
                 myPresence = true;
                 updatePresenceUI();
 
@@ -1502,7 +1499,6 @@
                 loadMessages();
                 onlineUsers.clear();
                 
-                // Force MQTT init
                 mqttConnected = false;
                 updateMqttUI();
                 initMqtt();
@@ -1556,7 +1552,7 @@
                 logout();
             }
 
-            // ---------- RENDER CONTACTS + GLOBAL SEARCH – STATUS VISIBLE! ----------
+            // ---------- RENDER CONTACTS + GLOBAL SEARCH ----------
             function renderContacts() {
                 if (!currentUser) return;
                 let items = [];
@@ -1592,7 +1588,7 @@
                         : '';
                     const avatarUrl = getAvatar(username);
                     const displayName = getDisplayName(username);
-                    const isOnline = onlineUsers.has(username); // STATUS WORKS!
+                    const isOnline = onlineUsers.has(username);
                     const statusClass = isOnline ? 'online-indicator' : 'offline-indicator';
                     const badge = isContact ? '' : '<span class="badge-new">new</span>';
                     
@@ -1676,7 +1672,7 @@
                 mediaModalImg.src = '';
             });
 
-            // ---------- MEDIA UPLOAD HANDLER ----------
+            // ---------- MEDIA UPLOAD ----------
             mediaBtn.addEventListener('click', function() {
                 mediaUpload.click();
             });
@@ -1706,7 +1702,7 @@
                 return String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
             }
 
-            // ---------- SETTINGS (AVATAR + DISPLAY NAME) ----------
+            // ---------- SETTINGS ----------
             function openSettings() {
                 if (!currentUser) return;
                 setElementAvatar(settingsAvatarPreview, currentUser);
